@@ -17,6 +17,24 @@ aes-128-ctr       1505.14k     3649.19k    11163.82k    23202.47k    32325.63k  
 aes-256-ctr       1520.47k     3568.73k    10785.54k    21271.89k    28940.50k    29534.89k
 
 ```
+
+```
+# Tests are approximate using memory only (no storage IO).
+# Algorithm |       Key |      Encryption |      Decryption
+    aes-ecb        128b        26.0 MiB/s        26.0 MiB/s
+    aes-ecb        256b        23.8 MiB/s        23.8 MiB/s
+    aes-cbc        128b        25.9 MiB/s        25.9 MiB/s
+    aes-cbc        256b        24.1 MiB/s        24.1 MiB/s
+    aes-cfb        128b        25.7 MiB/s        25.8 MiB/s
+    aes-cfb        256b        23.3 MiB/s        23.4 MiB/s
+    aes-ofb        128b        26.0 MiB/s        26.0 MiB/s
+    aes-ofb        256b        23.6 MiB/s        23.6 MiB/s
+    aes-ctr        128b        25.4 MiB/s        25.6 MiB/s
+    aes-ctr        256b        23.5 MiB/s        23.5 MiB/s
+    aes-xts        256b        18.6 MiB/s        19.9 MiB/s
+    aes-xts        512b        17.5 MiB/s        18.6 MiB/s
+
+```
 ltq-crypto driver:
 
 ```
