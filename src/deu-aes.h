@@ -76,7 +76,7 @@ struct aes_t {
 	u32			OD0R;
 };
 
-struct aes_ctx {
+struct deu_aes_ctx {
 	int			keylen;
 	u32			key[AES_MAX_KEY_SIZE / 4];
 	u32		 	nonce;

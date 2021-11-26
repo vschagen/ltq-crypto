@@ -26,9 +26,8 @@
 #include "deu-aes.h"
 #include "deu-core.h"
 
-
-__iomem void *ltq_aes_membase;
-spinlock_t ltq_aes_lock;
+static void __iomem *ltq_aes_membase;
+static DEFINE_SPINLOCK(ltq_aes_lock);
 
 // Init AES Engine (vr9) TODO!
 void aes_init_hw(__iomem void *base)
@@ -46,11 +45,9 @@ void aes_init_hw(__iomem void *base)
 		aes->CTRL.bits.ARS = 0;
 		wmb();
 	}
-
-	spin_lock_init(&ltq_aes_lock);
 }
 
-static void aes_set_key_hw(struct aes_ctx *ctx)
+static void aes_set_key_hw(struct deu_aes_ctx *ctx)
 {
 	struct aes_t *aes = (struct aes_t *)ltq_aes_membase;
 	u32 *key = ctx->key;
@@ -75,7 +72,7 @@ static void aes_set_key_hw(struct aes_ctx *ctx)
 	 aes->CTRL.bits.PNK =  1;
 }
 
-static void deu_transform_block(struct aes_ctx *ctx, u32 *iv, u8 *out_arg,
+static void deu_transform_block(struct deu_aes_ctx *ctx, u32 *iv, u8 *out_arg,
 			const u8 *in_arg, size_t nbytes, int mode, bool enc)
 {
 	struct aes_t *aes = (struct aes_t *)ltq_aes_membase;
@@ -128,55 +125,7 @@ static void deu_transform_block(struct aes_ctx *ctx, u32 *iv, u8 *out_arg,
 	spin_unlock_irqrestore(&ltq_aes_lock, flag);
 }
 
-static void deu_transform_partial(struct aes_ctx *ctx, u32 *iv, u8 *out_arg,
-			const u8 *in_arg, size_t nbytes, int mode, bool enc)
-{
-	struct aes_t *aes = (struct aes_t *)ltq_aes_membase;
-	union aes_control aesc;
-	u32 buf[AES_BLOCK_SIZE / 4];
-	const u32 *in = (u32 *)in_arg;
-	u32 *out = (u32 *)out_arg;
-	unsigned long flag;
-
-	spin_lock_irqsave(&ltq_aes_lock, flag);
-
-	aes_set_key_hw(ctx);
-
-	aes->CTRL.bits.E_D = !enc;
-	aes->CTRL.bits.O = mode;
-
-	aes->IV3R = iv[0];
-	aes->IV2R = iv[1];
-	aes->IV1R = iv[2];
-	aes->IV0R = iv[3];
-
-	memcpy(&buf, in, nbytes);
-
-	aes->ID3R = buf[0];
-	aes->ID2R = buf[1];
-	aes->ID1R = buf[2];
-	aes->ID0R = buf[3];
-
-	do {
-		aesc.word = __raw_readl(ltq_aes_membase);
-	} while (aesc.bits.BUS);
-
-	buf[0] = aes->OD3R;
-	buf[1] = aes->OD2R;
-	buf[2] = aes->OD1R;
-	buf[3] = aes->OD0R;
-
-	memcpy(out, &buf, nbytes);
-
-	iv[0] = aes->IV3R;
-	iv[1] = aes->IV2R;
-	iv[2] = aes->IV1R;
-	iv[3] = aes->IV0R;
-
-	spin_unlock_irqrestore(&ltq_aes_lock, flag);
-}
-
-static void deu_aes_xts_transform(struct aes_ctx *ctx, u32 *iv, u8 *out_arg,
+static void deu_aes_xts_transform(struct deu_aes_ctx *ctx, u32 *iv, u8 *out_arg,
 			const u8 *in_arg, size_t nbytes, bool enc)
 {
     	struct aes_t *aes = (struct aes_t *)ltq_aes_membase;
@@ -274,7 +223,7 @@ static void deu_aes_xts_transform(struct aes_ctx *ctx, u32 *iv, u8 *out_arg,
 
 static int deu_skcipher_crypt(struct skcipher_request *req, int mode, bool enc)
 {
-	struct aes_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct deu_aes_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct skcipher_walk walk;
 	unsigned int blk_bytes, nbytes;
 	u32 *iv = NULL;
@@ -307,9 +256,14 @@ static int deu_skcipher_crypt(struct skcipher_request *req, int mode, bool enc)
 	/* For stream ciphers handle last block
 	 * less than AES_BLOCK_SIZE (ofb, cfb and ctr)
 	 */
-	if (walk.nbytes)  {
-		deu_transform_partial(ctx, iv, walk.dst.virt.addr,
-				walk.src.virt.addr, walk.nbytes, mode, enc);
+	if (walk.nbytes) {
+		u8 buf[AES_BLOCK_SIZE];
+
+		memcpy(&buf, walk.src.virt.addr, nbytes);
+		deu_transform_block(ctx, iv, buf, buf,
+						AES_BLOCK_SIZE, mode, enc);
+
+		memcpy(walk.dst.virt.addr, &buf, nbytes);
 		err = skcipher_walk_done(&walk, 0);
 	}
 
@@ -318,7 +272,7 @@ static int deu_skcipher_crypt(struct skcipher_request *req, int mode, bool enc)
 
 static int deu_aes_xts_crypt(struct skcipher_request *req, bool enc)
 {
-	struct aes_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
+	struct deu_aes_ctx *ctx = crypto_tfm_ctx(req->base.tfm);
 	struct skcipher_walk walk;
 	u32 *iv = NULL;
 	unsigned int blk_bytes, nbytes, processed = 0;
@@ -377,7 +331,7 @@ static int deu_skcipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
 			unsigned int len)
 {
 	struct crypto_tfm *ctfm = crypto_skcipher_tfm(tfm);
-	struct aes_ctx *ctx = crypto_tfm_ctx(ctfm);
+	struct deu_aes_ctx *ctx = crypto_tfm_ctx(ctfm);
 
 	switch (len) {
 	case AES_KEYSIZE_128:
@@ -399,7 +353,7 @@ static int deu_skcipher_rfc3686_setkey(struct crypto_skcipher *tfm,
 				const u8 *key, unsigned int len)
 {
 	struct crypto_tfm *ctfm = crypto_skcipher_tfm(tfm);
-	struct aes_ctx *ctx = crypto_tfm_ctx(ctfm);
+	struct deu_aes_ctx *ctx = crypto_tfm_ctx(ctfm);
 
 	if (!key || !len)
 		return -EINVAL;
@@ -416,7 +370,7 @@ static int deu_skcipher_rfc3686_setkey(struct crypto_skcipher *tfm,
 static int deu_skcipher_xts_setkey(struct crypto_skcipher *tfm,
 				const u8 *key, unsigned int keylen)
 {
-	struct aes_ctx *ctx = crypto_tfm_ctx(crypto_skcipher_tfm(tfm));
+	struct deu_aes_ctx *ctx = crypto_tfm_ctx(crypto_skcipher_tfm(tfm));
 	unsigned int len = (keylen / 2);
 
 	if (keylen % 2)
@@ -466,7 +420,7 @@ struct deu_alg_template deu_alg_ecb_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = AES_BLOCK_SIZE,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 0,
 			.cra_module = THIS_MODULE,
 		},
@@ -490,7 +444,7 @@ struct deu_alg_template deu_alg_cbc_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = AES_BLOCK_SIZE,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 0xf,
 			.cra_module = THIS_MODULE,
 		},
@@ -516,7 +470,7 @@ struct deu_alg_template deu_alg_ofb_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = 1,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 0,
 			.cra_module = THIS_MODULE,
 		},
@@ -542,7 +496,7 @@ struct deu_alg_template deu_alg_cfb_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = 1,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 0,
 			.cra_module = THIS_MODULE,
 		},
@@ -567,7 +521,7 @@ struct deu_alg_template deu_alg_ctr_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = 1,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 1,
 			.cra_module = THIS_MODULE,
 		},
@@ -592,7 +546,7 @@ struct deu_alg_template deu_alg_rfc3686_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = 1,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 1,
 			.cra_module = THIS_MODULE,
 		},
@@ -617,7 +571,7 @@ struct deu_alg_template deu_alg_xts_aes = {
 			.cra_flags = CRYPTO_ALG_TYPE_SKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 			.cra_blocksize = XTS_BLOCK_SIZE,
-			.cra_ctxsize = sizeof(struct aes_ctx),
+			.cra_ctxsize = sizeof(struct deu_aes_ctx),
 			.cra_alignmask = 0,
 			.cra_module = THIS_MODULE,
 		},
