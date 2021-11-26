@@ -14,7 +14,7 @@
 #include "deu-core.h"
 #include "deu-aes.h"
 #include "deu-des.h"
-#include "deu-hash.h"
+//#include "deu-hash.h"
 
 static void __iomem *ltq_clk_membase;
 
@@ -38,7 +38,7 @@ extern struct deu_alg_template deu_alg_ofb_des3_ede;
 extern struct deu_alg_template deu_alg_cfb_des3_ede;
 extern struct deu_alg_template deu_alg_ctr_des3_ede;
 
-extern struct deu_alg_template deu_alg_sha1;
+//extern struct deu_alg_template deu_alg_sha1;
 
 static struct deu_alg_template *deu_algs[] = {
 #if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_DES)
@@ -63,7 +63,7 @@ static struct deu_alg_template *deu_algs[] = {
 	&deu_alg_xts_aes,
 #endif
 #if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_HASH)
-	&deu_alg_sha1,
+//	&deu_alg_sha1,
 //	&deu_alg_md5,
 //	&deu_alg_hmac_md5,
 //	&deu_alg_sha1,
@@ -141,7 +141,7 @@ static void ltq_deu_start(__iomem void *base)
 	des_init_hw(base);
 #endif
 #if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_HASH)
-	hash_init_hw(base);
+//	hash_init_hw(base);
 #endif
 }
 
