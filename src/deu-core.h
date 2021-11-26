@@ -10,8 +10,8 @@
 #include <crypto/internal/hash.h>
 #include <crypto/internal/skcipher.h>
 
-#define PMU_DEU			BIT(20)
 #define DEU_CRA_PRIORITY	400
+#define PMU_DEU			BIT(20)
 
 union clk_control {
 	u32	word;

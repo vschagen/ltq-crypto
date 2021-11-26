@@ -13,8 +13,10 @@
 
 #include "deu-core.h"
 #include "deu-aes.h"
+#include "deu-des.h"
+#include "deu-hash.h"
 
-void __iomem *ltq_clk_membase;
+static void __iomem *ltq_clk_membase;
 
 extern struct deu_alg_template deu_alg_ecb_aes;
 extern struct deu_alg_template deu_alg_cbc_aes;
@@ -24,15 +26,33 @@ extern struct deu_alg_template deu_alg_ctr_aes;
 extern struct deu_alg_template deu_alg_rfc3686_aes;
 extern struct deu_alg_template deu_alg_xts_aes;
 
+extern struct deu_alg_template deu_alg_ecb_des;
+extern struct deu_alg_template deu_alg_cbc_des;
+extern struct deu_alg_template deu_alg_ofb_des;
+extern struct deu_alg_template deu_alg_cfb_des;
+extern struct deu_alg_template deu_alg_ctr_des;
+
+extern struct deu_alg_template deu_alg_ecb_des3_ede;
+extern struct deu_alg_template deu_alg_cbc_des3_ede;
+extern struct deu_alg_template deu_alg_ofb_des3_ede;
+extern struct deu_alg_template deu_alg_cfb_des3_ede;
+extern struct deu_alg_template deu_alg_ctr_des3_ede;
+
 extern struct deu_alg_template deu_alg_sha1;
 
 static struct deu_alg_template *deu_algs[] = {
-//#if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_DES)
-//	&deu_alg_ecb_des,
-//	&deu_alg_cbc_des,
-//	&deu_alg_ecb_des3_ede,
-//	&deu_alg_cbc_des3_ede,
-//#endif
+#if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_DES)
+	&deu_alg_ecb_des,
+	&deu_alg_cbc_des,
+	&deu_alg_ofb_des,
+	&deu_alg_cfb_des,
+	&deu_alg_ctr_des,
+	&deu_alg_ecb_des3_ede,
+	&deu_alg_cbc_des3_ede,
+	&deu_alg_ofb_des3_ede,
+	&deu_alg_cfb_des3_ede,
+	&deu_alg_ctr_des3_ede,
+#endif
 #if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_AES)
 	&deu_alg_ecb_aes,
 	&deu_alg_cbc_aes,
@@ -100,41 +120,43 @@ fail:
 
 static void ltq_deu_start(__iomem void *base)
 {
-	union clk_control clk;
-
 	ltq_clk_membase = base;
 
-	ltq_pmu_enable(PMU_DEU);
+	if (base) {
+		union clk_control *clk = (union clk_control *)ltq_clk_membase;
 
-	clk.word = ltq_r32(ltq_clk_membase);
-	clk.bits.FSOE = 0;
-	clk.bits.SBWE = 0;
-	clk.bits.SPEN = 0;
-	clk.bits.SBWE = 0;
-	clk.bits.DISS = 0;
-	clk.bits.DISR = 0;
-	ltq_w32(clk.word, ltq_clk_membase);
+		ltq_pmu_enable(PMU_DEU);
 
+		clk->bits.FSOE = 0;
+		clk->bits.SBWE = 0;
+		clk->bits.SPEN = 0;
+		clk->bits.SBWE = 0;
+		clk->bits.DISS = 0;
+		clk->bits.DISR = 0;
+	}
 #if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_AES)
 	aes_init_hw(base);
 #endif
-
+#if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_DES)
+	des_init_hw(base);
+#endif
+#if IS_ENABLED(CONFIG_CRYPTO_DEV_DEU_HASH)
+	hash_init_hw(base);
+#endif
 }
 
 static void ltq_deu_stop(void)
 {
-	union clk_control clk;
+	union clk_control *clk = (union clk_control *)ltq_clk_membase;
 
 	ltq_pmu_disable(PMU_DEU);
 
-	clk.word = ltq_r32(ltq_clk_membase);
-	clk.bits.FSOE = 1;
-	clk.bits.SBWE = 1;
-	clk.bits.SPEN = 1;
-	clk.bits.SBWE = 1;
-	clk.bits.DISS = 1;
-	clk.bits.DISR = 1;
-	ltq_w32(clk.word, ltq_clk_membase);
+	clk->bits.FSOE = 1;
+	clk->bits.SBWE = 1;
+	clk->bits.SPEN = 1;
+	clk->bits.SBWE = 1;
+	clk->bits.DISS = 1;
+	clk->bits.DISR = 1;
 }
 
 static int ltq_deu_probe(struct platform_device *pdev)

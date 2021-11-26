@@ -45,11 +45,11 @@ config CRYPTO_DEV_DEU_AES
 
 config CRYPTO_DEV_DEU_DES
 	bool "Register DES algorithm implementatons with the Crypto API"
-	default n
+	default y
 	select CRYPTO_DEV_IFXDEU
 	help
-	  Selecting this will offload DES / 3DES - ECB and CBC crypto
-	  to the Data Encryption Unit.
+	  Selecting this will offload DES / 3DES - ECB, CBC, OCB, CFB
+	  and CTR modes to the Data Encryption Unit.
 
 config CRYPTO_DEV_DEU_HASH
 	bool "Register HASH algorithm implementatons with the Crypto API"
